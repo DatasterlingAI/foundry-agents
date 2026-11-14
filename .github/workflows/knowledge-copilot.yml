@@ -1,0 +1,50 @@
+name: knowledge-copilot
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/docs/**"
+      - "agents/knowledge-copilot/**"
+  workflow_dispatch:
+    inputs:
+      question:
+        description: "Question to ask (leave blank to run the sample questions)"
+        required: false
+      skip_ingest:
+        description: "Skip reloading the documents"
+        type: boolean
+        default: false
+permissions:
+  id-token: write
+  contents: read
+env:
+  FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+  FOUNDRY_MODEL: ${{ vars.FOUNDRY_MODEL }}
+  SEARCH_ENDPOINT: ${{ vars.SEARCH_ENDPOINT }}
+  SEARCH_CONNECTION: ${{ vars.SEARCH_CONNECTION }}
+  AOAI_ENDPOINT: ${{ vars.AOAI_ENDPOINT }}
+  EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+  REPO_URL: https://github.com/${{ github.repository }}
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install packages
+        run: pip install "azure-ai-projects>=2.0.0" azure-identity azure-search-documents openai
+      - name: 1. Load documents into Azure AI Search
+        if: ${{ !inputs.skip_ingest }}
+        run: python agents/knowledge-copilot/ingest.py
+      - name: 2. Deploy the agent to Foundry
+        run: python agents/knowledge-copilot/deploy.py
+      - name: 3. Ask the agent
+        env:
+          QUESTION: ${{ inputs.question }}
+        run: python agents/knowledge-copilot/ask.py
